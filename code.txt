@@ -1,0 +1,131 @@
+#include <WiFi.h>
+#include <U8g2lib.h>
+#include <SPI.h>
+
+// --- OLED SPI pins ---
+#define OLED_CS   15
+#define OLED_DC   17
+#define OLED_RST  16
+
+U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI u8g2(U8G2_R0, OLED_CS, OLED_DC, OLED_RST);
+
+// --- Scroll / mode buttons ---
+#define BTN_EN    16   // EN button
+#define BTN_BOOT  0    // BOOT button
+
+int scrollIndex = 0;    // which network to start displaying
+int numNetworks = 0;
+int refreshDelay = 200;  // OLED update speed
+int scanInterval = 10000; // Wi-Fi scan every 10 sec
+unsigned long lastScan = 0;
+
+String ssidList[50];   // store SSIDs
+int rssiList[50];
+int chList[50];
+
+bool scrollMode = true; // true = scroll mode, false = normal mode
+
+// --- Long press detection ---
+unsigned long enPressTime = 0;
+unsigned long bootPressTime = 0;
+const unsigned long longPress = 2000; // 2 seconds
+
+// --- Button helper ---
+bool isPressed(int pin) {
+  return digitalRead(pin) == LOW;
+}
+
+// --- Scan Wi-Fi networks ---
+void scanNetworks() {
+  numNetworks = WiFi.scanNetworks();
+  for (int i = 0; i < numNetworks && i < 50; i++) {
+    ssidList[i] = WiFi.SSID(i);
+    rssiList[i] = WiFi.RSSI(i);
+    chList[i] = WiFi.channel(i);
+  }
+  scrollIndex = 0; // reset scroll after scan
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // OLED
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+
+  // Buttons
+  pinMode(BTN_EN, INPUT_PULLUP);
+  pinMode(BTN_BOOT, INPUT_PULLUP);
+
+  // Wi-Fi
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  scanNetworks();
+  lastScan = millis();
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // --- Long press handling to toggle mode ---
+  if (isPressed(BTN_EN)) {
+    if (enPressTime == 0) enPressTime = currentMillis;
+  } else {
+    if (enPressTime > 0 && (currentMillis - enPressTime) >= longPress) {
+      scrollMode = !scrollMode;
+    }
+    enPressTime = 0;
+  }
+
+  if (isPressed(BTN_BOOT)) {
+    if (bootPressTime == 0) bootPressTime = currentMillis;
+  } else {
+    if (bootPressTime > 0 && (currentMillis - bootPressTime) >= longPress) {
+      scrollMode = !scrollMode;
+    }
+    bootPressTime = 0;
+  }
+
+  // --- Automatic Wi-Fi scan every 10 seconds ---
+  if (currentMillis - lastScan >= scanInterval) {
+    scanNetworks();
+    lastScan = currentMillis;
+  }
+
+  // --- Scroll mode ---
+  if (scrollMode) {
+    if (isPressed(BTN_EN)) {
+      scrollIndex--;
+      if (scrollIndex < 0) scrollIndex = 0;
+      delay(150);
+    }
+    if (isPressed(BTN_BOOT)) {
+      scrollIndex++;
+      if (scrollIndex > numNetworks - 6) scrollIndex = numNetworks - 6;
+      if (scrollIndex < 0) scrollIndex = 0;
+      delay(150);
+    }
+  }
+
+  // --- Draw OLED ---
+  u8g2.clearBuffer();
+  u8g2.drawStr(0, 0, "WiFi Scan:");
+
+  int y = 12;
+  for (int i = scrollIndex; i < numNetworks && y < 64; i++) {
+    String line = ssidList[i] + " " + String(rssiList[i]) + "dBm Ch:" + String(chList[i]);
+    u8g2.drawStr(0, y, line.c_str());
+    y += 10;
+  }
+
+  // Display mode
+  if (scrollMode) u8g2.drawStr(90, 0, "Scroll");
+  else u8g2.drawStr(90, 0, "Normal");
+
+  u8g2.sendBuffer();
+
+  delay(refreshDelay);
+}
+

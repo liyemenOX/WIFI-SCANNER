@@ -1,0 +1,9 @@
+| OLED Pin | ESP32 GPIO  | Meaning        |
+| -------- | ----------- | -------------- |
+| GND      | GND         | Ground         |
+| VCC      | 3.3V        | Power          |
+| SCK      | GPIO 18     | SPI Clock      |
+| SDA      | GPIO 23     | SPI MOSI       |
+| RES      | GPIO 16     | Reset          |
+| DC       | GPIO 17     | Data / Command |
+| CS       | GPIO 15     | Chip Select    |
